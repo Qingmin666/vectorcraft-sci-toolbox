@@ -8,10 +8,11 @@ import sys
 import zipfile
 
 root=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--runtime-prefix',type=Path,default=Path(sys.base_prefix))
+parser=argparse.ArgumentParser();parser.add_argument('--runtime-prefix',type=Path,default=Path(sys.base_prefix));parser.add_argument('--output-dir',type=Path,default=root/'dist')
 args=parser.parse_args()
-destination=root/'dist'/'vectorcraft-sci-toolbox-v0.1.0-windows-x64.zip'
-executable=root/'dist'/'VectorCraftSciToolbox.exe'
+args.output_dir.mkdir(parents=True,exist_ok=True)
+destination=args.output_dir/'vectorcraft-sci-toolbox-v0.1.0-windows-x64.zip'
+executable=args.output_dir/'VectorCraftSciToolbox.exe'
 if not executable.is_file():raise SystemExit('Build executable first')
 notices={}
 python_license=args.runtime_prefix/'LICENSE_PYTHON.txt'
@@ -43,6 +44,6 @@ with zipfile.ZipFile(destination,'w',zipfile.ZIP_DEFLATED) as archive:
         if path.is_file():archive.write(path,path.name if path.parent.name=='dist' else path.relative_to(root).as_posix())
     for name,content in notices.items():archive.writestr(name,content)
 checksums=''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in [executable,destination])
-(root/'dist'/'SHA256SUMS.txt').write_text(checksums,encoding='utf-8')
+(args.output_dir/'SHA256SUMS.txt').write_text(checksums,encoding='utf-8')
 print(destination)
 print('Retained notice files:',len(notices))
