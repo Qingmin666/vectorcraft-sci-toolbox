@@ -1,0 +1,474 @@
+diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
+index 07a5d94..a6e0af3 100644
+--- a/apps/vectorcraft/src/main.rs
++++ b/apps/vectorcraft/src/main.rs
+@@ -625,7 +625,7 @@ fn main() -> std::process::ExitCode {
+             "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
+             "--in-window-menus" => in_window_menus = true,
+             "--version" => {
+-                println!("vectorcraft {}", env!("CARGO_PKG_VERSION"));
++                println!("VectorCraft SCI 0.2.0-rc.1 (upstream {})", env!("CARGO_PKG_VERSION"));
+                 return std::process::ExitCode::SUCCESS;
+             }
+             _ => files.push(a),
+@@ -756,7 +756,7 @@ fn main() -> std::process::ExitCode {
+     // A panic that ends the window (egui-wgpu's own, #502) is caught here: never a crash.
+     let outcome = vectorcraft_engine::guard::catch_panic(|| {
+         eframe::run_native(
+-            "VectorCraft",
++            "VectorCraft SCI",
+             options,
+             Box::new(move |cc| {
+                 let mut app = VectorcraftApp::new(Session::new(), services(cc.winit_window().cloned(), cc.egui_ctx.clone()));
+diff --git a/apps/vectorcraft/src/profile.rs b/apps/vectorcraft/src/profile.rs
+index c73596a..c2b6323 100644
+--- a/apps/vectorcraft/src/profile.rs
++++ b/apps/vectorcraft/src/profile.rs
+@@ -12,7 +12,11 @@ fn prefs_path_with(os: &str, legacy: bool, env: impl Fn(&str) -> Option<OsString
+         // Never fall back to DrawCraft's real profile when the isolated file does not exist.
+         return (!legacy && !root.is_empty()).then(|| PathBuf::from(root).join("ui.json"));
+     }
+-    let (name, lower) = if legacy { ("DrawCraft", "drawcraft") } else { ("VectorCraft", "vectorcraft") };
++    // The custom edition never reads or migrates the official application's preferences.
++    if legacy {
++        return None;
++    }
++    let (name, lower) = ("VectorCraftSCI", "vectorcraft-sci");
+     let base = match os {
+         "macos" => env("HOME").map(|p| PathBuf::from(p).join("Library/Application Support").join(name)),
+         "windows" => env("APPDATA").map(|p| PathBuf::from(p).join(name)),
+@@ -54,13 +58,10 @@ mod tests {
+ 
+     #[test]
+     fn unset_override_keeps_platform_paths_and_legacy_migration() {
+-        assert_eq!(prefs_path_with("macos", false, environment), Some("/user/Library/Application Support/VectorCraft/ui.json".into()));
+-        assert_eq!(prefs_path_with("macos", true, environment), Some("/user/Library/Application Support/DrawCraft/ui.json".into()));
+-        assert_eq!(prefs_path_with("windows", false, environment), Some("/roaming/VectorCraft/ui.json".into()));
+-        assert_eq!(prefs_path_with("linux", false, environment), Some("/xdg-config/vectorcraft/ui.json".into()));
+-        assert_eq!(
+-            prefs_path_with("linux", true, |key| if key == "HOME" { environment(key) } else { None }),
+-            Some("/user/.config/drawcraft/ui.json".into())
+-        );
++        assert_eq!(prefs_path_with("macos", false, environment), Some("/user/Library/Application Support/VectorCraftSCI/ui.json".into()));
++        assert_eq!(prefs_path_with("macos", true, environment), None);
++        assert_eq!(prefs_path_with("windows", false, environment), Some("/roaming/VectorCraftSCI/ui.json".into()));
++        assert_eq!(prefs_path_with("linux", false, environment), Some("/xdg-config/vectorcraft-sci/ui.json".into()));
++        assert_eq!(prefs_path_with("linux", true, |key| if key == "HOME" { environment(key) } else { None }), None);
+     }
+ }
+diff --git a/apps/vectorcraft/tests/automation_args.rs b/apps/vectorcraft/tests/automation_args.rs
+index 8d2c667..5358968 100644
+--- a/apps/vectorcraft/tests/automation_args.rs
++++ b/apps/vectorcraft/tests/automation_args.rs
+@@ -65,6 +65,6 @@ fn duplicate_roots_fail_for_both_spellings() {
+ fn explicit_dash_folder_does_not_consume_version() {
+     let out = Command::new(BIN).args(["--automation-read-root=-folder", "--automation-write-root", "./-folder", "--version"]).output().unwrap();
+     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+-    assert_eq!(String::from_utf8(out.stdout).unwrap(), format!("vectorcraft {}\n", env!("CARGO_PKG_VERSION")));
++    assert_eq!(String::from_utf8(out.stdout).unwrap(), format!("VectorCraft SCI 0.2.0-rc.1 (upstream {})\n", env!("CARGO_PKG_VERSION")));
+     assert!(out.stderr.is_empty());
+ }
+diff --git a/crates/ui-egui/src/dock.rs b/crates/ui-egui/src/dock.rs
+index 62cf2df..a362587 100644
+--- a/crates/ui-egui/src/dock.rs
++++ b/crates/ui-egui/src/dock.rs
+@@ -105,6 +105,9 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
+                     }
+                     DockTab::Layers => panels::layers::show(app, ui),
+                     DockTab::Libraries => panels::libraries(app, ui),
++                    DockTab::Science => {
++                        egui::ScrollArea::vertical().id_salt("science").auto_shrink([false, false]).show(ui, |ui| panels::scientific::show(app, ui));
++                    }
+                 });
+             })
+             .response
+@@ -412,6 +415,13 @@ pub(crate) fn panel_body(app: &mut VectorcraftApp, ui: &mut Ui, id: &str, width:
+                 panels::layers::show(app, ui);
+             }
+             Some(DockTab::Libraries) => panels::libraries(app, ui),
++            Some(DockTab::Science) => {
++                egui::ScrollArea::vertical()
++                    .id_salt("science-flyout")
++                    .max_height(tall)
++                    .auto_shrink([false, false])
++                    .show(ui, |ui| panels::scientific::show(app, ui));
++            }
+             None => panels::show_icon_panel(app, ui, id),
+         }
+     });
+@@ -648,7 +658,7 @@ mod tests {
+         assert!(h.app.ui.dock_collapsed, "the » collapses the dock");
+         assert!(h.column_left() > SCREEN.x - ICON_COL - 2.0, "collapsed: only the icon column is left: {}", h.column_left());
+         let icons = h.icons();
+-        assert_eq!(icons.len(), icon_panel_count() + 3, "Properties, Layers and Libraries became icons");
++        assert_eq!(icons.len(), icon_panel_count() + DockTab::ALL.len(), "every dock tab became an icon");
+         assert!(icons[0].top() > HEADER, "the icons sit under the « strip");
+         h.click(h.arrow());
+         assert!(!h.app.ui.dock_collapsed, "the « expands the dock again");
+diff --git a/crates/ui-egui/src/floating.rs b/crates/ui-egui/src/floating.rs
+index cd5ec9f..d6bf3ad 100644
+--- a/crates/ui-egui/src/floating.rs
++++ b/crates/ui-egui/src/floating.rs
+@@ -1240,28 +1240,37 @@ mod tests {
+     fn a_dock_tab_dragged_out_floats_and_dropped_on_the_dock_docks_again() {
+         let mut h = Harness::new();
+         let tabs = h.dock_tabs();
+-        assert_eq!(tabs.len(), 3);
++        assert_eq!(tabs.len(), DockTab::ALL.len());
+         let to = pos2(600.0, 400.0);
+         h.drag(tabs[1].center(), to);
+         assert_eq!(h.groups(), [["layers"]]);
+         assert!(h.group("layers").contains(to));
+-        assert_eq!(h.dock_tabs().len(), 2);
++        assert_eq!(h.dock_tabs().len(), DockTab::ALL.len() - 1);
+         assert_eq!(h.app.ui.dock_tab, DockTab::Properties);
+         h.click(h.title("layers"));
+         assert_eq!(h.groups(), [["layers"]], "a click only activates the floating tab");
+         let over = h.shared_tab("properties").center();
+         h.drag(h.title("layers"), over);
+         assert!(h.groups().is_empty());
+-        assert_eq!((h.dock_tabs().len(), h.app.ui.dock_tab), (3, DockTab::Layers));
++        assert_eq!((h.dock_tabs().len(), h.app.ui.dock_tab), (DockTab::ALL.len(), DockTab::Layers));
+     }
+ 
+     #[test]
+     fn the_strip_right_of_the_tabs_floats_the_whole_group_and_its_close_box_docks_it() {
+         let mut h = Harness::new();
++        // Four tabs can fill the default-width strip. This case tests dragging the remaining
++        // group strip, so give the fixture enough width to leave that strip visible.
++        h.ctx.data_mut(|d| {
++            d.insert_persisted(
++                egui::Id::new("dock"),
++                egui::containers::panel::PanelState { outer_rect: Rect::from_min_size(pos2(900.0, 0.0), vec2(500.0, SCREEN.y)) },
++            )
++        });
++        h.settle();
+         let tabs = h.dock_tabs();
+-        let rest = tabs[2].right_center() + vec2(30.0, 0.0);
++        let rest = tabs.last().unwrap().right_center() + vec2(30.0, 0.0);
+         h.drag(rest, pos2(500.0, 300.0));
+-        assert_eq!(h.groups(), [["properties", "layers", "libraries"]]);
++        assert_eq!(h.groups(), [["properties", "layers", "libraries", "science"]]);
+         assert!(h.dock_tabs().is_empty(), "the tabbed group left the dock");
+         let column = h.temp_rect(dock_rect_id());
+         assert!(column.width() < 40.0, "only the icon column is left: {column:?}");
+@@ -1271,7 +1280,7 @@ mod tests {
+             if h.app.ui.docking.is_some() { pos2(g.right() - 36.0, g.top() + 16.0) } else { pos2(g.right() - 11.0, g.top() + 1.0 + TITLE / 2.0) };
+         h.click(close);
+         assert!(h.groups().is_empty());
+-        assert_eq!(h.dock_tabs().len(), 3);
++        assert_eq!(h.dock_tabs().len(), DockTab::ALL.len());
+     }
+ 
+     #[test]
+@@ -1318,7 +1327,7 @@ mod tests {
+         assert!(h.groups().is_empty());
+         assert!(h.app.ui.docking.as_ref().unwrap().contains(&"color".into()));
+         assert!(h.app.ui.open_panel.is_none(), "the actual shared group owns Color");
+-        assert_eq!(h.dock_tabs().len(), 4);
++        assert_eq!(h.dock_tabs().len(), DockTab::ALL.len() + 1);
+     }
+ 
+     #[test]
+@@ -1467,7 +1476,7 @@ mod tests {
+         let g = h.group("layers");
+         let screen = Rect::from_min_size(Pos2::ZERO, SCREEN);
+         assert!(screen.contains_rect(g), "clamped into the window: {g:?}");
+-        assert!(h.dock_tabs().len() == 2 && h.app.ui.dock_tab == DockTab::Properties);
++        assert!(h.dock_tabs().len() == DockTab::ALL.len() - 1 && h.app.ui.dock_tab == DockTab::Properties);
+     }
+ 
+     #[test]
+@@ -1481,7 +1490,7 @@ mod tests {
+         assert!(app.ui.floating_panels.is_empty());
+         // The tabbed group's tabs float together.
+         let r = app.run("window.panel.float", json!({"panel": "layers", "group": true})).unwrap();
+-        assert_eq!(r["group"], json!(["properties", "layers", "libraries"]));
++        assert_eq!(r["group"], json!(["properties", "layers", "libraries", "science"]));
+         assert_eq!(app.ui.floating_panels[0].active, 1);
+         assert!(app.run("window.panel.float", json!({"panel": "layers", "onto": "properties"})).is_err(), "not onto its own group");
+         // Floated out of its group; a lone panel moves.
+diff --git a/crates/ui-egui/src/i18n/cs.tsv b/crates/ui-egui/src/i18n/cs.tsv
+index defd619..22f005a 100644
+--- a/crates/ui-egui/src/i18n/cs.tsv
++++ b/crates/ui-egui/src/i18n/cs.tsv
+@@ -4500,3 +4500,7 @@ mark-style	Japanese	Japonské
+ @msg	the file stopped being read (please report this bug)	čtení souboru se přerušilo (nahlaste prosím tuto chybu)
+ 	Concentric Dividers:	Soustředné dělicí čáry:
+ 	Radial Dividers:	Radiální dělicí čáry:
++	SCI Toolbox	Vědecké obrázky
++@msg	settings 应为参数对象	settings musí být objekt parametrů
++@msg	{error}；回滚失败：{rollback}	{error}; vrácení změn selhalo: {rollback}
++@msg	对象边界 {key} 无效	Neplatné hranice objektu {key}
+diff --git a/crates/ui-egui/src/i18n/de.tsv b/crates/ui-egui/src/i18n/de.tsv
+index 9f34728..391ec1b 100644
+--- a/crates/ui-egui/src/i18n/de.tsv
++++ b/crates/ui-egui/src/i18n/de.tsv
+@@ -4151,3 +4151,7 @@ theme	Appearance	Erscheinungsbild
+ @msg	the file stopped being read (please report this bug)	das Lesen der Datei wurde abgebrochen (bitte melden Sie diesen Fehler)
+ 	Concentric Dividers:	Konzentrische Trennlinien:
+ 	Radial Dividers:	Radiale Trennlinien:
++	SCI Toolbox	SCI-Werkzeuge
++@msg	settings 应为参数对象	settings muss ein Parameterobjekt sein
++@msg	{error}；回滚失败：{rollback}	{error}; Zurücksetzen fehlgeschlagen: {rollback}
++@msg	对象边界 {key} 无效	Ungültige Objektgrenzen {key}
+diff --git a/crates/ui-egui/src/i18n/es.tsv b/crates/ui-egui/src/i18n/es.tsv
+index f00f3b3..7fb50b2 100644
+--- a/crates/ui-egui/src/i18n/es.tsv
++++ b/crates/ui-egui/src/i18n/es.tsv
+@@ -4568,3 +4568,7 @@ mark-style	Japanese	Japonesas
+ 	X:	X:
+ 	Y:	Y:
+ @id	file.close	Cerrar archivo
++	SCI Toolbox	Figuras científicas
++@msg	settings 应为参数对象	settings debe ser un objeto de parámetros
++@msg	{error}；回滚失败：{rollback}	{error}; falló la reversión: {rollback}
++@msg	对象边界 {key} 无效	Límites de objeto no válidos: {key}
+diff --git a/crates/ui-egui/src/i18n/fr.tsv b/crates/ui-egui/src/i18n/fr.tsv
+index 4913925..f6a8aed 100644
+--- a/crates/ui-egui/src/i18n/fr.tsv
++++ b/crates/ui-egui/src/i18n/fr.tsv
+@@ -4204,3 +4204,7 @@ lighting	Light	Lumière
+ @msg	the file stopped being read (please report this bug)	la lecture du fichier s’est interrompue (veuillez signaler ce bogue)
+ 	Concentric Dividers:	Divisions concentriques :
+ 	Radial Dividers:	Divisions radiales :
++	SCI Toolbox	Figures scientifiques
++@msg	settings 应为参数对象	settings doit être un objet de paramètres
++@msg	{error}；回滚失败：{rollback}	{error} ; échec du rétablissement : {rollback}
++@msg	对象边界 {key} 无效	Limites de l’objet invalides : {key}
+diff --git a/crates/ui-egui/src/i18n/hu.tsv b/crates/ui-egui/src/i18n/hu.tsv
+index 878605b..1f80973 100644
+--- a/crates/ui-egui/src/i18n/hu.tsv
++++ b/crates/ui-egui/src/i18n/hu.tsv
+@@ -4594,3 +4594,7 @@ theme	Appearance	Kinézet
+ @msg	the file stopped being read (please report this bug)	a fájl beolvasása megszakadt (kérjük, jelentsd ezt a hibát)
+ 	Concentric Dividers:	Koncentrikus osztók:
+ 	Radial Dividers:	Sugárirányú osztók:
++	SCI Toolbox	Tudományos ábrák
++@msg	settings 应为参数对象	A settings értékének paraméterobjektumnak kell lennie
++@msg	{error}；回滚失败：{rollback}	{error}; a visszaállítás sikertelen: {rollback}
++@msg	对象边界 {key} 无效	Érvénytelen objektumhatárok: {key}
+diff --git a/crates/ui-egui/src/i18n/it.tsv b/crates/ui-egui/src/i18n/it.tsv
+index 2e92459..84578ce 100644
+--- a/crates/ui-egui/src/i18n/it.tsv
++++ b/crates/ui-egui/src/i18n/it.tsv
+@@ -4196,3 +4196,7 @@ lighting	Light	Luce
+ @msg	the file stopped being read (please report this bug)	la lettura del file si è interrotta (segnala questo errore)
+ 	Concentric Dividers:	Divisori concentrici:
+ 	Radial Dividers:	Divisori radiali:
++	SCI Toolbox	Figure scientifiche
++@msg	settings 应为参数对象	settings deve essere un oggetto di parametri
++@msg	{error}；回滚失败：{rollback}	{error}; ripristino non riuscito: {rollback}
++@msg	对象边界 {key} 无效	Limiti dell’oggetto non validi: {key}
+diff --git a/crates/ui-egui/src/i18n/ja.tsv b/crates/ui-egui/src/i18n/ja.tsv
+index 4125621..4c7519d 100644
+--- a/crates/ui-egui/src/i18n/ja.tsv
++++ b/crates/ui-egui/src/i18n/ja.tsv
+@@ -4190,3 +4190,7 @@ lighting	Light	ライト
+ @msg	the file stopped being read (please report this bug)	ファイルの読み込みが中断されました (このバグを報告してください)
+ 	Concentric Dividers:	同心円の分割線:
+ 	Radial Dividers:	放射状の分割線:
++	SCI Toolbox	科学図版
++@msg	settings 应为参数对象	settings はパラメーターオブジェクトである必要があります
++@msg	{error}；回滚失败：{rollback}	{error}；ロールバックに失敗しました：{rollback}
++@msg	对象边界 {key} 无效	オブジェクトの境界 {key} が無効です
+diff --git a/crates/ui-egui/src/i18n/ko.tsv b/crates/ui-egui/src/i18n/ko.tsv
+index cfd724e..aec5fe3 100644
+--- a/crates/ui-egui/src/i18n/ko.tsv
++++ b/crates/ui-egui/src/i18n/ko.tsv
+@@ -4160,3 +4160,7 @@ lighting	Light	광원
+ @msg	the file stopped being read (please report this bug)	파일 읽기가 중단되었습니다(이 버그를 신고해 주세요)
+ 	Concentric Dividers:	동심원 구분선:
+ 	Radial Dividers:	방사형 구분선:
++	SCI Toolbox	과학 도판
++@msg	settings 应为参数对象	settings는 매개변수 객체여야 합니다
++@msg	{error}；回滚失败：{rollback}	{error}; 롤백 실패: {rollback}
++@msg	对象边界 {key} 无效	잘못된 객체 경계: {key}
+diff --git a/crates/ui-egui/src/i18n/pt-br.tsv b/crates/ui-egui/src/i18n/pt-br.tsv
+index 04e66fd..352c8a1 100644
+--- a/crates/ui-egui/src/i18n/pt-br.tsv
++++ b/crates/ui-egui/src/i18n/pt-br.tsv
+@@ -3679,3 +3679,7 @@ axis	Both	Ambos
+ @msg	the file stopped being read (please report this bug)	a leitura do arquivo foi interrompida (informe este erro)
+ 	Concentric Dividers:	Divisórias concêntricas:
+ 	Radial Dividers:	Divisórias radiais:
++	SCI Toolbox	Figuras científicas
++@msg	settings 应为参数对象	settings deve ser um objeto de parâmetros
++@msg	{error}；回滚失败：{rollback}	{error}; falha ao reverter: {rollback}
++@msg	对象边界 {key} 无效	Limites do objeto inválidos: {key}
+diff --git a/crates/ui-egui/src/i18n/ru.tsv b/crates/ui-egui/src/i18n/ru.tsv
+index f95584f..5cb447c 100644
+--- a/crates/ui-egui/src/i18n/ru.tsv
++++ b/crates/ui-egui/src/i18n/ru.tsv
+@@ -4192,3 +4192,7 @@ lighting	Light	Свет
+ @msg	the file stopped being read (please report this bug)	чтение файла прервалось (пожалуйста, сообщите об этой ошибке)
+ 	Concentric Dividers:	Концентрические разделители:
+ 	Radial Dividers:	Радиальные разделители:
++	SCI Toolbox	Научные иллюстрации
++@msg	settings 应为参数对象	settings должен быть объектом параметров
++@msg	{error}；回滚失败：{rollback}	{error}; откат не удался: {rollback}
++@msg	对象边界 {key} 无效	Недопустимые границы объекта: {key}
+diff --git a/crates/ui-egui/src/i18n/uk.tsv b/crates/ui-egui/src/i18n/uk.tsv
+index 489a369..58f8e5e 100644
+--- a/crates/ui-egui/src/i18n/uk.tsv
++++ b/crates/ui-egui/src/i18n/uk.tsv
+@@ -4176,3 +4176,7 @@ lighting	Light	Світло
+ @msg	the file stopped being read (please report this bug)	читання файлу перервалося (будь ласка, повідомте про цю помилку)
+ 	Concentric Dividers:	Концентричні розділювачі:
+ 	Radial Dividers:	Радіальні розділювачі:
++	SCI Toolbox	Наукові ілюстрації
++@msg	settings 应为参数对象	settings має бути об’єктом параметрів
++@msg	{error}；回滚失败：{rollback}	{error}; не вдалося відкотити зміни: {rollback}
++@msg	对象边界 {key} 无效	Недійсні межі об’єкта: {key}
+diff --git a/crates/ui-egui/src/i18n/zh-hans.tsv b/crates/ui-egui/src/i18n/zh-hans.tsv
+index 836b425..06a930b 100644
+--- a/crates/ui-egui/src/i18n/zh-hans.tsv
++++ b/crates/ui-egui/src/i18n/zh-hans.tsv
+@@ -3788,3 +3788,7 @@ lighting	Light	光源
+ 	Highlight Area	高光区域
+ 	Concentric Dividers:	同心分隔线：
+ 	Radial Dividers:	径向分隔线：
++	SCI Toolbox	科研组图
++@msg	settings 应为参数对象	settings 应为参数对象
++@msg	{error}；回滚失败：{rollback}	{error}；回滚失败：{rollback}
++@msg	对象边界 {key} 无效	对象边界 {key} 无效
+diff --git a/crates/ui-egui/src/i18n/zh-hant.tsv b/crates/ui-egui/src/i18n/zh-hant.tsv
+index 2c96295..f900079 100644
+--- a/crates/ui-egui/src/i18n/zh-hant.tsv
++++ b/crates/ui-egui/src/i18n/zh-hant.tsv
+@@ -3569,3 +3569,7 @@ lighting	Light	光源
+ 	Highlight Area	亮部範圍
+ 	Concentric Dividers:	同心分隔線：
+ 	Radial Dividers:	徑向分隔線：
++	SCI Toolbox	科研組圖
++@msg	settings 应为参数对象	settings 應為參數物件
++@msg	{error}；回滚失败：{rollback}	{error}；還原失敗：{rollback}
++@msg	对象边界 {key} 无效	物件邊界 {key} 無效
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+index 2688432..554fe43 100644
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -52,6 +52,12 @@ use Item::Sep;
+ 
+ /// UI-level commands: (id, label, shortcut, params doc).
+ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
++    (
++        "ui.scientific",
++        "SCI Toolbox",
++        "",
++        "{operation?: inspect|configure|grid|resize|align|spacing|labels|borders|copy_position|paste_position|swap|preset_save|preset_load|preset_delete, axis?: left|center|right|top|middle|bottom|horizontal|vertical, settings?: object (inspect returns current settings; width/height are strings, empty means unchanged)} native scientific figure panel; artwork edits are one undo step; settings patches merge with current values",
++    ),
+     (
+         "app.language",
+         "Interface Language",
+@@ -1322,6 +1328,7 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
+             Ok(Value::Null)
+         }
+         "ui.flattenerPreview" => crate::panels::flattener_preview::command(app, p),
++        "ui.scientific" => crate::panels::scientific::command(app, p),
+         "window.graphicStyleLibrary" => crate::panels::graphic_styles::open_library(app, p),
+         "window.graphicStyleLibrary.other" => crate::panels::graphic_styles::other_library(app, s("path")),
+         "ui.saveGraphicStyleLibrary" => {
+@@ -2626,6 +2633,7 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
+                 panel("Pathfinder", "pathfinder"),
+                 panel("Pattern Options", "patternOptions"),
+                 panel("Properties", "properties"),
++                panel("SCI Toolbox", "science"),
+                 panel("Separations Preview", "separations"),
+                 panel("Stroke", "stroke"),
+                 todo("SVG Interactivity"),
+diff --git a/crates/ui-egui/src/panel_docking_tests.rs b/crates/ui-egui/src/panel_docking_tests.rs
+index 911f5d3..0671d69 100644
+--- a/crates/ui-egui/src/panel_docking_tests.rs
++++ b/crates/ui-egui/src/panel_docking_tests.rs
+@@ -120,9 +120,9 @@ fn saved_workspace_restores_the_custom_tree_and_hidden_panel_placement() {
+ fn legacy_float_group_aliases_use_atomic_shared_groups_and_preserve_tools() {
+     let mut app = app();
+     app.run("window.panel.float", json!({"panel":"layers","group":true,"x":30,"y":50})).unwrap();
+-    assert_eq!(app.ui.docking.as_ref().unwrap().floating[0].panels.len(), 3);
++    assert_eq!(app.ui.docking.as_ref().unwrap().floating[0].panels.len(), crate::state::DockTab::ALL.len());
+     app.run("window.panel.float", json!({"panel":"swatches","onto":"layers"})).unwrap();
+-    assert_eq!(app.ui.docking.as_ref().unwrap().floating[0].panels.len(), 4);
++    assert_eq!(app.ui.docking.as_ref().unwrap().floating[0].panels.len(), crate::state::DockTab::ALL.len() + 1);
+     let before = app.ui.docking.clone();
+     assert!(app.run("window.panel.float", json!({"panel":"properties","onto":"missing","group":true})).is_err());
+     assert_eq!(app.ui.docking, before);
+@@ -349,14 +349,15 @@ fn floating_icon_groups_redock_to_the_rail_and_keep_saved_origins() {
+ fn all_dock_group_origins_survive_float_and_return() {
+     let mut app = app();
+     app.run("window.panel.float", json!({"panel":"layers", "group":true})).unwrap();
+-    assert_eq!(app.ui.floating_panels[0].panels.len(), 3);
++    assert_eq!(app.ui.floating_panels[0].panels.len(), crate::state::DockTab::ALL.len());
+     assert!(app.ui.docking_hidden.contains_key("properties"));
+     assert!(app.ui.docking_hidden.contains_key("layers"));
+     assert!(app.ui.docking_hidden.contains_key("libraries"));
++    assert!(app.ui.docking_hidden.contains_key("science"));
+     app.run("window.panel.dock", json!({"panel":"layers", "group":true})).unwrap();
+     let layout = app.ui.docking.as_ref().unwrap();
+     assert!(layout.floating.is_empty());
+-    assert_eq!(layout.panels().into_iter().map(String::as_str).collect::<Vec<_>>(), ["properties", "layers", "libraries"]);
++    assert_eq!(layout.panels().into_iter().map(String::as_str).collect::<Vec<_>>(), ["properties", "layers", "libraries", "science"]);
+     assert_eq!(app.ui.dock_tab, crate::state::DockTab::Layers);
+     assert!(valid(layout));
+ }
+diff --git a/crates/ui-egui/src/panels/mod.rs b/crates/ui-egui/src/panels/mod.rs
+index 031f468..529f415 100644
+--- a/crates/ui-egui/src/panels/mod.rs
++++ b/crates/ui-egui/src/panels/mod.rs
+@@ -34,6 +34,7 @@ pub mod paragraph;
+ pub mod pathfinder;
+ pub mod pattern_options;
+ pub mod properties;
++pub mod scientific;
+ pub mod separations;
+ pub mod stroke;
+ pub mod swatches;
+diff --git a/crates/ui-egui/src/state.rs b/crates/ui-egui/src/state.rs
+index 3ae28ca..b23e9a5 100644
+--- a/crates/ui-egui/src/state.rs
++++ b/crates/ui-egui/src/state.rs
+@@ -74,6 +74,7 @@ pub enum DockTab {
+     Properties,
+     Layers,
+     Libraries,
++    Science,
+ }
+ 
+ impl DockTab {
+@@ -83,10 +84,11 @@ impl DockTab {
+             DockTab::Properties => ("properties", "Properties", "dc-options"),
+             DockTab::Layers => ("layers", "Layers", "layers"),
+             DockTab::Libraries => ("libraries", "Libraries", "library"),
++            DockTab::Science => ("science", "SCI Toolbox", "grid-3x3"),
+         }
+     }
+ 
+-    pub const ALL: [DockTab; 3] = [DockTab::Properties, DockTab::Layers, DockTab::Libraries];
++    pub const ALL: [DockTab; 4] = [DockTab::Properties, DockTab::Layers, DockTab::Libraries, DockTab::Science];
+ 
+     /// The tab whose panel id is `id`.
+     pub fn from_id(id: &str) -> Option<DockTab> {
+@@ -356,6 +358,13 @@ pub struct UiState {
+     /// Flattener Preview panel: highlight, overprints, preset and options (`ui.flattenerPreview`).
+     #[serde(default)]
+     pub flattener_preview: crate::panels::flattener_preview::Settings,
++    /// Scientific figure panel parameters, isolated with this edition's preferences.
++    #[serde(default)]
++    pub scientific: crate::panels::scientific::Settings,
++    #[serde(default)]
++    pub scientific_presets: std::collections::BTreeMap<String, crate::panels::scientific::Settings>,
++    #[serde(skip)]
++    pub scientific_clipboard: Option<crate::panels::scientific::PositionClipboard>,
+     /// Color Guide panel: Limit to Library, a swatch library id, "document" (the document's
+     /// swatches) or "" (none) (`ui.colorGuideLimit`).
+     #[serde(default)]
+@@ -642,6 +651,9 @@ impl Default for UiState {
+             color_guide: Default::default(),
+             library_panel: None,
+             flattener_preview: Default::default(),
++            scientific: Default::default(),
++            scientific_presets: Default::default(),
++            scientific_clipboard: None,
+             color_guide_limit: String::new(),
+             align_to: Default::default(),
+             svg_options: Value::Null,
