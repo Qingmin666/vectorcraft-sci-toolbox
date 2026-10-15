@@ -1,0 +1,29 @@
+[
+  {
+    "repository": "d3",
+    "commit": "2c52792197299346b7bdb94322bb4dff8f554fea",
+    "licenseFile": "d3-palette-LICENSE.txt"
+  },
+  {
+    "repository": "tol",
+    "commit": "4834ac3e9652a9c5bcb7183197d8d8db71846288",
+    "licenseFile": "tol-palette-LICENSE.txt"
+  },
+  {
+    "repository": "okabe",
+    "commit": "f5e769a5f0ada392b2b611253c02cdd195f51bae",
+    "licenseFile": "okabe-palette-LICENSE.txt"
+  },
+  {
+    "repository": "matplotlib/matplotlib",
+    "commit": "ba9ebc7d8dbac19b39de7202ec4285fa4ee598c7",
+    "licenseFile": "Matplotlib-palette-LICENSE.txt",
+    "sourceSha256": "ddad3698f5129ceb1792a445371286c08bc9080298e657b3054aea19c9659ef9"
+  },
+  {
+    "repository": "original SCI",
+    "licenseFile": "project MIT LICENSE",
+    "method": "Five SCI-labelled HSL palettes independently generated; no journal-name or ggsci palette tables used",
+    "paletteCount": 5
+  }
+]

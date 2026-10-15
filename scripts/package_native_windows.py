@@ -78,13 +78,15 @@ def main():
     (licenses/'RUST-DEPENDENCIES.json').write_text(json.dumps({'packages':records,'missingLicenseFiles':missing},ensure_ascii=False,indent=2),encoding='utf-8')
     if missing:raise RuntimeError('License files missing: '+', '.join(missing))
     examples=package/'examples';examples.mkdir(exist_ok=True)
-    for name in ('native-scientific-full.vectorcraft','native-scientific-full.png'):
+    for name in ('native-scientific-full.vectorcraft','native-scientific-full.png','native-rc2-combined.vectorcraft','native-rc2-combined.png'):
+        if not (args.validation/name).is_file():continue
         shutil.copy2(args.validation/name,examples/name)
-    for name in ('report.json','full-report.json'):
+    for name in ('report.json','full-report.json','complete-report.json','palette-report.json','gui-report.json'):
+        if not (args.validation/name).is_file():continue
         shutil.copy2(args.validation/name,package/('VALIDATION-'+name))
     copy_tree(project/'native',package/'source/native');copy_tree(project/'src',package/'source/src');copy_tree(project/'docs/native',package/'source/docs/native');shutil.copy2(project/'LICENSE',package/'source/LICENSE');shutil.copy2(project/'THIRD_PARTY_NOTICES.md',package/'THIRD_PARTY_NOTICES.md')
     scripts=package/'source/scripts';scripts.mkdir(parents=True,exist_ok=True)
-    for name in ('build_native_windows.ps1','package_native_windows.py','fetch_native_license_cache.py','smoke_native_desktop.py','smoke_native_full.py','smoke_desktop.py'):
+    for name in ('build_native_windows.ps1','package_native_windows.py','fetch_native_license_cache.py','smoke_native_desktop.py','smoke_native_full.py','smoke_native_complete.py','smoke_native_palette.py','smoke_desktop.py'):
         shutil.copy2(project/'scripts'/name,scripts/name)
     manifest={'edition':identity['editionVersion'],'upstream':identity,'binarySha256':sha256(package/'VectorCraftSCI.exe'),'hostPatchSha256':sha256(project/'native/patches/host-integration.patch'),'rustDependencyPackages':len(records),'runtime':'independent native application; no Python service required'}
     (package/'BUILD.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')

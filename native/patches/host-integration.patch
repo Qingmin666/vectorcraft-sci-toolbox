@@ -1,5 +1,31 @@
+diff --git a/ASSETS.md b/ASSETS.md
+index 1003a0e..389109c 100644
+--- a/ASSETS.md
++++ b/ASSETS.md
+@@ -333,3 +333,9 @@ Generated-in-code art is original and has no file to list. This covers the defau
+ | `examples/ribbons.vectorcraft` | VectorCraft contributors | Original artwork built through the VectorCraft command API | MIT OR Apache-2.0 |  |
+ | `examples/feature-sheet.vectorcraft` | VectorCraft contributors | Original artwork built through the VectorCraft command API | MIT OR Apache-2.0 |  |
+ | `examples/perspective-city.vectorcraft` | VectorCraft contributors | Original artwork built through the VectorCraft command API | MIT OR Apache-2.0 |  |
++
++## SCI edition scientific palette data
++
++| Asset | Author | Source | Licence | Notes |
++|---|---|---|---|---|
++| `crates/ui-egui/src/panels/scientific/palettes.json` | Mike Bostock; Cynthia Brewer, Mark Harrower and Pennsylvania State University; Paul Tol and Clément Haëck; Jim Rybarski; Matplotlib developers | Per-palette pinned source URLs in the JSON; SCI distribution `native/palette-sources.json` | ISC, ColorBrewer Apache-2.0, BSD-3-Clause, MIT, Matplotlib license | 18 sourced numerical palettes plus 5 original SCI HSL palettes (MIT OR Apache-2.0); accompanying license texts under `crates/ui-egui/src/panels/scientific/licenses/`; no third-party plugin code or artwork |
+diff --git a/NOTICE b/NOTICE
+index 73e6492..ed31aa6 100644
+--- a/NOTICE
++++ b/NOTICE
+@@ -72,3 +72,7 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++SCI edition numerical palette data uses D3 scale-chromatic (including the ColorBrewer colour schemes), tol_colors, okabe-ito-py and Matplotlib. Authors, pinned source URLs and corresponding license texts are recorded beside the data in crates/ui-egui/src/panels/scientific. No code or artwork from a third-party Illustrator extension is included.
++
++Five additional SCI-labelled HSL colour schemes are original work, licensed MIT OR Apache-2.0; they are not journal-specified palettes.
 diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
-index 07a5d94..a6e0af3 100644
+index 07a5d94..c2c5f8e 100644
 --- a/apps/vectorcraft/src/main.rs
 +++ b/apps/vectorcraft/src/main.rs
 @@ -625,7 +625,7 @@ fn main() -> std::process::ExitCode {
@@ -7,7 +33,7 @@ index 07a5d94..a6e0af3 100644
              "--in-window-menus" => in_window_menus = true,
              "--version" => {
 -                println!("vectorcraft {}", env!("CARGO_PKG_VERSION"));
-+                println!("VectorCraft SCI 0.2.0-rc.1 (upstream {})", env!("CARGO_PKG_VERSION"));
++                println!("VectorCraft SCI 0.2.0-rc.2 (upstream {})", env!("CARGO_PKG_VERSION"));
                  return std::process::ExitCode::SUCCESS;
              }
              _ => files.push(a),
@@ -57,7 +83,7 @@ index c73596a..c2b6323 100644
      }
  }
 diff --git a/apps/vectorcraft/tests/automation_args.rs b/apps/vectorcraft/tests/automation_args.rs
-index 8d2c667..5358968 100644
+index 8d2c667..5a3e6f5 100644
 --- a/apps/vectorcraft/tests/automation_args.rs
 +++ b/apps/vectorcraft/tests/automation_args.rs
 @@ -65,6 +65,6 @@ fn duplicate_roots_fail_for_both_spellings() {
@@ -65,8 +91,117 @@ index 8d2c667..5358968 100644
      let out = Command::new(BIN).args(["--automation-read-root=-folder", "--automation-write-root", "./-folder", "--version"]).output().unwrap();
      assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 -    assert_eq!(String::from_utf8(out.stdout).unwrap(), format!("vectorcraft {}\n", env!("CARGO_PKG_VERSION")));
-+    assert_eq!(String::from_utf8(out.stdout).unwrap(), format!("VectorCraft SCI 0.2.0-rc.1 (upstream {})\n", env!("CARGO_PKG_VERSION")));
++    assert_eq!(String::from_utf8(out.stdout).unwrap(), format!("VectorCraft SCI 0.2.0-rc.2 (upstream {})\n", env!("CARGO_PKG_VERSION")));
      assert!(out.stderr.is_empty());
+ }
+diff --git a/crates/ui-egui/src/dialogs/color_picker.rs b/crates/ui-egui/src/dialogs/color_picker.rs
+index 4733883..5368227 100644
+--- a/crates/ui-egui/src/dialogs/color_picker.rs
++++ b/crates/ui-egui/src/dialogs/color_picker.rs
+@@ -173,15 +173,31 @@ fn proxy_color(app: &VectorcraftApp, stroke: bool) -> Color {
+ /// `ui.colorPicker {stroke?, color?}`: open the picker for the fill (or stroke) proxy, starting
+ /// from `color` or the proxy's colour.
+ pub fn open(app: &mut VectorcraftApp, p: &Value) -> Result<Value, String> {
++    let target = p.get("scientificTarget").and_then(Value::as_str);
++    if let Some(value) = p.get("scientificTarget") {
++        crate::panels::scientific::colors::parameter_color(app, value.as_str().ok_or("颜色目标必须为文本")?)?;
++    }
++    if target.is_some() && app.session.in_interaction() {
++        return Err("请先结束当前编辑，再选择科研参数颜色".into());
++    }
+     let stroke = p.get("stroke").and_then(Value::as_bool).unwrap_or(!app.session.fill_active);
+     let color = match p.get("color") {
+         Some(v) => color_value(v).ok_or_else(|| format!("bad color {v}"))?,
+-        None => proxy_color(app, stroke),
++        None => {
++            if let Some(target) = target {
++                crate::panels::scientific::colors::parameter_color(app, target)?
++            } else {
++                proxy_color(app, stroke)
++            }
++        }
+     };
+     let mut d = Dialog::new(
+         KIND,
+         json!({"stroke": stroke, "original": color_json(&color), "channel": Channel::default().id(), "webOnly": false, "swatches": false}),
+     );
++    if let Some(target) = target {
++        d.fields.insert("scientificTarget".into(), json!(target));
++    }
+     store(&mut d, &Picked::of(color));
+     app.ui.dialog = Some(d);
+     Ok(Value::Null)
+@@ -259,6 +275,9 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+ /// the last preview. Nothing previews until the colour first changes, nor without a selection
+ /// (the colour then only becomes the default paint, on OK).
+ fn preview(app: &mut VectorcraftApp, d: &mut Dialog) {
++    if d.fields.contains_key("scientificTarget") {
++        return;
++    }
+     let (cmd, params) = paint_command(app, d);
+     let first = !app.session.in_interaction();
+     let unchanged = d.fields.get(PREVIEWED) == Some(&params) || first && d.fields.get("original").and_then(color_value) == Some(picked(d).color);
+@@ -404,6 +423,9 @@ fn swatch_list(app: &VectorcraftApp, ui: &mut Ui, current: &Color) -> Option<Col
+ 
+ /// OK: apply the colour to the proxy, keeping the live preview as one undo step.
+ fn confirm(app: &mut VectorcraftApp, d: &Dialog) -> Result<Value, String> {
++    if let Some(target) = d.fields.get("scientificTarget").and_then(Value::as_str) {
++        return app.run("ui.scientific", json!({"operation":"set_color", "target":target, "color":format!("#{}", hex_digits(&picked(d).color))}));
++    }
+     let (cmd, params) = paint_command(app, d);
+     super::form::commit_preview(app, cmd, params)
+ }
+@@ -569,4 +591,51 @@ mod tests {
+         super::super::confirm(&mut app).unwrap();
+         assert!(matches!(crate::panels::current_paints(&app).0.color(), Some(Color::Cmyk { .. })));
+     }
++    #[test]
++    fn scientific_picker_never_previews_or_edits_art() {
++        let mut app = app();
++        let before = app.run("document.inspect", json!({})).unwrap();
++        for target in ["labels", "borders"] {
++            app.run("ui.colorPicker", json!({"scientificTarget":target})).unwrap();
++            app.ui.dialog.as_mut().unwrap().fields.insert("hex".into(), json!("2367AC"));
++            frame(&mut app);
++            assert!(!app.session.in_interaction());
++            assert_eq!(app.run("document.inspect", json!({})).unwrap(), before);
++            super::super::confirm(&mut app).unwrap();
++            assert_eq!(app.run("document.inspect", json!({})).unwrap(), before);
++        }
++        assert_eq!(app.ui.scientific.label_color, "#2367AC");
++        assert_eq!(app.ui.scientific.border_color, "#2367AC");
++        assert_eq!(app.ui.scientific_recent_colors, vec!["#2367AC"]);
++    }
++
++    #[test]
++    fn scientific_cancel_has_no_parameter_or_history_effect() {
++        let mut app = app();
++        let before = app.run("document.inspect", json!({})).unwrap();
++        let settings = app.ui.scientific.clone();
++        app.run("ui.colorPicker", json!({"scientificTarget":"labels"})).unwrap();
++        app.ui.dialog.as_mut().unwrap().fields.insert("hex".into(), json!("FF0000"));
++        frame(&mut app);
++        super::super::cancel(&mut app);
++        assert_eq!(app.ui.scientific, settings);
++        assert!(app.ui.scientific_recent_colors.is_empty());
++        assert_eq!(app.run("document.inspect", json!({})).unwrap(), before);
++        assert!(app.run("ui.colorPicker", json!({"scientificTarget":"other"})).is_err());
++    }
++
++    #[test]
++    fn scientific_colors_work_without_document_and_history_is_bounded() {
++        let mut app = VectorcraftApp::new(Session::new(), Default::default());
++        for i in 0..15 {
++            app.run("ui.scientific", json!({"operation":"set_color","target":"labels","color":format!("#1234{i:02X}")})).unwrap();
++        }
++        assert_eq!(app.ui.scientific_recent_colors.len(), 12);
++        app.run("ui.colorPicker", json!({"scientificTarget":"borders"})).unwrap();
++        app.ui.dialog.as_mut().unwrap().fields.insert("hex".into(), json!("abc"));
++        frame(&mut app);
++        super::super::confirm(&mut app).unwrap();
++        assert_eq!(app.ui.scientific.border_color, "#AABBCC");
++        assert!(app.session.active().is_none());
++    }
  }
 diff --git a/crates/ui-egui/src/dock.rs b/crates/ui-egui/src/dock.rs
 index 62cf2df..a362587 100644
@@ -344,8 +479,22 @@ index 2c96295..f900079 100644
 +@msg	settings 应为参数对象	settings 應為參數物件
 +@msg	{error}；回滚失败：{rollback}	{error}；還原失敗：{rollback}
 +@msg	对象边界 {key} 无效	物件邊界 {key} 無效
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 25fc715..ced9b7a 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1244,6 +1244,9 @@ impl VectorcraftApp {
+         dock::floating_panel(self, &ctx);
+         floating::show(self, &ctx);
+         panels::library_panel::show_window(self, &ctx);
++        panels::scientific::finish_live_offsets(self, &ctx);
++        panels::scientific::autosave_scale(self, &ctx);
++        panels::scientific::zoom::tick(self);
+         dialogs::show(self, &ctx);
+         palette::show(self, &ctx);
+         if self.custom_titlebar {
 diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
-index 2688432..554fe43 100644
+index 2688432..c4461a7 100644
 --- a/crates/ui-egui/src/menus.rs
 +++ b/crates/ui-egui/src/menus.rs
 @@ -52,6 +52,12 @@ use Item::Sep;
@@ -361,6 +510,15 @@ index 2688432..554fe43 100644
      (
          "app.language",
          "Interface Language",
+@@ -389,7 +395,7 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
+         "ui.colorPicker",
+         "Color Picker…",
+         "",
+-        "{stroke?: bool (default: the active proxy), color?: \"#rrggbb\"|[r,g,b]|{c,m,y,k}|{gray} (default: the proxy's colour)} open the Color Picker (fields: hex or color, channel, webOnly, swatches); OK runs paint.setFill / paint.setStroke",
++        "{stroke?: bool (default: the active proxy), color?: \"#rrggbb\"|[r,g,b]|{c,m,y,k}|{gray} (default: the proxy's colour)} open the Color Picker (fields: hex or color, channel, webOnly, swatches); OK runs paint.setFill / paint.setStroke; scientificTarget?: labels|borders skips artwork preview and writes only that SCI parameter",
+     ),
+     (
+         "ui.brushOptions",
 @@ -1322,6 +1328,7 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
              Ok(Value::Null)
          }
@@ -424,7 +582,7 @@ index 031f468..529f415 100644
  pub mod stroke;
  pub mod swatches;
 diff --git a/crates/ui-egui/src/state.rs b/crates/ui-egui/src/state.rs
-index 3ae28ca..b23e9a5 100644
+index 3ae28ca..0d4f6b4 100644
 --- a/crates/ui-egui/src/state.rs
 +++ b/crates/ui-egui/src/state.rs
 @@ -74,6 +74,7 @@ pub enum DockTab {
@@ -448,7 +606,7 @@ index 3ae28ca..b23e9a5 100644
  
      /// The tab whose panel id is `id`.
      pub fn from_id(id: &str) -> Option<DockTab> {
-@@ -356,6 +358,13 @@ pub struct UiState {
+@@ -356,6 +358,23 @@ pub struct UiState {
      /// Flattener Preview panel: highlight, overprints, preset and options (`ui.flattenerPreview`).
      #[serde(default)]
      pub flattener_preview: crate::panels::flattener_preview::Settings,
@@ -456,17 +614,32 @@ index 3ae28ca..b23e9a5 100644
 +    #[serde(default)]
 +    pub scientific: crate::panels::scientific::Settings,
 +    #[serde(default)]
++    pub scientific_recent_colors: Vec<String>,
++    #[serde(default)]
++    pub scientific_library: crate::panels::scientific::palette::Library,
++    #[serde(skip)]
++    pub scientific_zoom_tracker: Option<crate::panels::scientific::zoom::Tracker>,
++    #[serde(skip)]
++    pub scientific_channels: Vec<crate::panels::scientific::layers::Channel>,
++    #[serde(skip)]
++    pub scientific_channel_session: Option<crate::panels::scientific::layers::ChannelSession>,
++    #[serde(default)]
 +    pub scientific_presets: std::collections::BTreeMap<String, crate::panels::scientific::Settings>,
 +    #[serde(skip)]
 +    pub scientific_clipboard: Option<crate::panels::scientific::PositionClipboard>,
      /// Color Guide panel: Limit to Library, a swatch library id, "document" (the document's
      /// swatches) or "" (none) (`ui.colorGuideLimit`).
      #[serde(default)]
-@@ -642,6 +651,9 @@ impl Default for UiState {
+@@ -642,6 +661,14 @@ impl Default for UiState {
              color_guide: Default::default(),
              library_panel: None,
              flattener_preview: Default::default(),
 +            scientific: Default::default(),
++            scientific_recent_colors: Vec::new(),
++            scientific_library: Default::default(),
++            scientific_zoom_tracker: None,
++            scientific_channels: Vec::new(),
++            scientific_channel_session: None,
 +            scientific_presets: Default::default(),
 +            scientific_clipboard: None,
              color_guide_limit: String::new(),

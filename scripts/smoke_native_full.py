@@ -14,7 +14,7 @@ from smoke_desktop import example_png
 
 
 def main():
-    parser=argparse.ArgumentParser(); parser.add_argument('--port',type=int,required=True); parser.add_argument('--output',type=Path,required=True); args=parser.parse_args()
+    parser=argparse.ArgumentParser(); parser.add_argument('--edition',default='0.2.0-rc.1'); parser.add_argument('--port',type=int,required=True); parser.add_argument('--output',type=Path,required=True); args=parser.parse_args()
     out=args.output.resolve(); out.mkdir(parents=True,exist_ok=True); c=ControlClient(args.port); checks=[]
     def check(name,condition):
         if not condition: raise AssertionError(name)
@@ -82,7 +82,7 @@ def main():
     image=c.execute('file.place',name='clip.png',dataBase64=base64.b64encode(example_png()).decode(),at=[360,150],link=False)['ids'][0];choose([image]);clip=c.execute('object.maskImage')['id'];choose([group]);c.execute('object.rotate',angle=27);choose([group,clip]);before=boxes([group,clip]);expected=grid_plan(before,2,25,12,'rows');run('grid',{'columns':2,'gap_x':25,'gap_y':12,'width':'','height':''});check('rotated group and clipped image layout',same(boxes([group,clip]),expected));c.execute('edit.undo');check('group clip undo',same(boxes([group,clip]),before))
     reject('negative dimension makes no edits',lambda:run('resize',{'width':'-4'}));choose([group]);c.execute('object.setProps',ids=[group],locked=True);reject('locked or empty selection refused',lambda:run('grid',{'width':''}))
     c.execute('document.save',path=str(out/'native-edge-cases.vectorcraft'));c.call('app.open',{'path':str(native)});choose(ids);run('configure',{'width':'','height':'','columns':2,'gap_x':18,'gap_y':35,'label_style':'A','label_anchor':'top-left','label_color':'#ffffff','label_size':18});c.execute('window.panel',panel='science')
-    report={'edition':'0.2.0-rc.1','checks':checks,'passed':len(checks),'scope':'native feature migration on one Windows host; publication is separate'};(out/'full-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print('PASS ALL',len(checks))
+    report={'edition':args.edition,'checks':checks,'passed':len(checks),'scope':'native feature migration on one Windows host; publication is separate'};(out/'full-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print('PASS ALL',len(checks))
 
 
 if __name__=='__main__':main()

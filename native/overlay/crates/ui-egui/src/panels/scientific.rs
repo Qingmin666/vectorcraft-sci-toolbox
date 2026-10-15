@@ -8,11 +8,21 @@ use serde_json::{Value, json};
 
 use crate::VectorcraftApp;
 
+mod advanced;
+pub mod colors;
 mod extended;
+pub mod layers;
+pub mod palette;
+mod scale;
+mod tiff;
+pub mod zoom;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub scale: scale::ScaleSettings,
+    pub zoom: zoom::ZoomSettings,
+    pub pseudocolor: layers::LayerSettings,
     pub columns: usize,
     pub gap_x: f64,
     pub gap_y: f64,
@@ -34,12 +44,33 @@ pub struct Settings {
     pub relative_position: bool,
     pub border_weight: f64,
     pub border_color: String,
+    pub reverse_order: bool,
+    pub auto_layout: bool,
+    pub align_edges: bool,
+    pub layout_width: String,
+    pub size_mode: String,
+    pub swap_anchor: String,
+    pub position_anchor: String,
+    pub artboard_reference: bool,
+    pub allow_position_mismatch: bool,
+    pub position_override: bool,
+    pub position_dx: f64,
+    pub position_dy: f64,
+    pub position_reverse: bool,
+    pub spacing_from_end: bool,
+    pub label_bold: bool,
+    pub live_labels: bool,
+    pub border_dash: f64,
+    pub border_group: bool,
     pub preset_name: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            scale: Default::default(),
+            zoom: Default::default(),
+            pseudocolor: Default::default(),
             columns: 2,
             gap_x: 12.0,
             gap_y: 12.0,
@@ -61,6 +92,24 @@ impl Default for Settings {
             relative_position: false,
             border_weight: 1.0,
             border_color: "#000000".into(),
+            reverse_order: false,
+            auto_layout: false,
+            align_edges: false,
+            layout_width: String::new(),
+            size_mode: "custom".into(),
+            swap_anchor: "top-left".into(),
+            position_anchor: "top-left".into(),
+            artboard_reference: false,
+            allow_position_mismatch: false,
+            position_override: false,
+            position_dx: 0.,
+            position_dy: 0.,
+            position_reverse: false,
+            spacing_from_end: false,
+            label_bold: false,
+            live_labels: false,
+            border_dash: 0.0,
+            border_group: false,
             preset_name: "默认预设".into(),
         }
     }
@@ -79,6 +128,9 @@ struct BoxInfo {
 pub struct PositionClipboard {
     boxes: Vec<BoxInfo>,
     relative: bool,
+    anchor: String,
+    artboard: bool,
+    origins: Vec<[f64; 2]>,
 }
 
 fn bounds(node: &Value) -> Result<BoxInfo, String> {
@@ -154,8 +206,15 @@ fn transaction(
     ids: Vec<u64>,
     work: impl FnOnce(&mut VectorcraftApp) -> Result<(), String>,
 ) -> Result<(), String> {
+    if app.session.in_interaction() {
+        app.session.commit_interaction().map_err(|e| e.to_string())?;
+    }
     app.run("edit.undoGroup.begin", json!({"label": label}))?;
-    let outcome = work(app).and_then(|()| app.run("select.set", json!({"ids": ids})).map(|_| ()));
+    let outcome = work(app).and_then(|()| {
+        let ids: Vec<_> =
+            ids.into_iter().filter(|id| app.session.active().is_some_and(|st| st.doc.node(vectorcraft_doc::NodeId(*id)).is_some())).collect();
+        app.run("select.set", json!({"ids":ids})).map(|_| ())
+    });
     match outcome {
         Ok(()) => app.run("edit.undoGroup.end", json!({})).map(|_| ()),
         Err(error) => match app.run("edit.undoGroup.end", json!({"cancel": true})) {
@@ -185,12 +244,18 @@ fn letters(mut index: usize) -> String {
 
 fn label_text(index: usize, style: &str) -> Result<String, String> {
     let base = match style {
-        "A" | "A)" => letters(index),
-        "a" | "a)" => letters(index).to_lowercase(),
+        "A" | "A)" | "(A)" => letters(index),
+        "a" | "a)" | "(a)" => letters(index).to_lowercase(),
         "1" | "1)" => index.to_string(),
         _ => return Err("未知编号格式".into()),
     };
-    Ok(if style.ends_with(')') { format!("{base})") } else { base })
+    Ok(if style.starts_with('(') {
+        format!("({base})")
+    } else if style.ends_with(')') {
+        format!("{base})")
+    } else {
+        base
+    })
 }
 
 fn attribute<'a>(detail: &'a Value, key: &str) -> Option<&'a str> {
@@ -204,6 +269,14 @@ fn attribute<'a>(detail: &'a Value, key: &str) -> Option<&'a str> {
 
 pub(crate) fn labels(app: &mut VectorcraftApp, settings: &Settings) -> Result<(), String> {
     let (mut boxes, nodes) = selection(app)?;
+    for b in &mut boxes {
+        let d = app.run("document.node", json!({"id":b.id}))?;
+        if matches!(attribute(&d, "sci-role"), Some("scale-wrapper" | "border-wrapper")) {
+            let target = attribute(&d, "sci-target").and_then(|s| s.parse::<u64>().ok()).ok_or("标注组合的关联已损坏")?;
+            *b = bounds(nodes.get(&target).ok_or("找不到原图")?)?;
+        }
+    }
+
     if !(1..=9999).contains(&settings.label_start)
         || settings.label_start.saturating_add(boxes.len()) > 10000
         || !settings.label_size.is_finite()
@@ -214,7 +287,7 @@ pub(crate) fn labels(app: &mut VectorcraftApp, settings: &Settings) -> Result<()
     {
         return Err("请检查编号、字号、字体和偏移".into());
     }
-    extended::ordered(&mut boxes, &settings.order)?;
+    advanced::order(app, &mut boxes, settings)?;
     extended::valid_color(&settings.label_color)?;
     label_text(settings.label_start, &settings.label_style)?;
     if !["top-left", "top-right", "bottom-left", "bottom-right"].contains(&settings.label_anchor.as_str()) {
@@ -257,7 +330,7 @@ pub(crate) fn labels(app: &mut VectorcraftApp, settings: &Settings) -> Result<()
                 )?;
                 id
             };
-            app.run("text.setStyle", json!({"ids": [id], "font": settings.font, "size": settings.label_size, "fill": settings.label_color}))?;
+            app.run("text.setStyle", json!({"ids": [id], "font": settings.font, "size": settings.label_size, "fill": settings.label_color,"style":if settings.label_bold {"Bold"}else{"Regular"}}))?;
             let current = bounds(&app.run("document.node", json!({"id": id, "summary": true}))?)?;
             let x = if settings.label_anchor.ends_with("right") { b.x + b.w - current.w } else { b.x };
             let y = if settings.label_anchor.starts_with("bottom") { b.y + b.h - current.h } else { b.y };
@@ -270,21 +343,56 @@ pub(crate) fn labels(app: &mut VectorcraftApp, settings: &Settings) -> Result<()
 /// The panel and automation share the same entry point; no background service is involved.
 pub fn command(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String> {
     let operation = params.get("operation").and_then(Value::as_str).unwrap_or("inspect");
+    if operation == "channels_read" {
+        return layers::read_channels(app);
+    }
+    if operation == "channels_set" {
+        return layers::configure_channels(app, params);
+    }
+    if operation.starts_with("palette_") {
+        return palette::command(app, operation, params);
+    }
     let mut value = serde_json::to_value(&app.ui.scientific).map_err(|e| e.to_string())?;
     if let Some(patch) = params.get("settings") {
         let patch = patch.as_object().ok_or("settings 应为参数对象")?;
-        let base = value.as_object_mut().ok_or("无法读取科研参数")?;
-        for (key, value) in patch {
-            base.insert(key.clone(), value.clone());
+        fn merge(base: &mut Value, patch: &Value) {
+            if let (Some(base), Some(patch)) = (base.as_object_mut(), patch.as_object()) {
+                for (key, value) in patch {
+                    if value.is_object() {
+                        merge(base.entry(key.clone()).or_insert_with(|| json!({})), value);
+                    } else {
+                        base.insert(key.clone(), value.clone());
+                    }
+                }
+            }
         }
+        merge(&mut value, &Value::Object(patch.clone()));
     }
     let mut settings: Settings = serde_json::from_value(value).map_err(|e| format!("科研参数无效：{e}"))?;
     let axis = params.get("axis").and_then(Value::as_str).unwrap_or("");
     match operation {
         "grid" => grid(app, &settings)?,
-        "resize" | "align" | "spacing" | "swap" | "paste_position" => extended::layout(app, &settings, operation, axis)?,
+        "resize" | "align" | "spacing" | "swap" | "paste_position" | "distribute" | "spacing_auto" => {
+            extended::layout(app, &settings, operation, axis)?
+        }
         "copy_position" => extended::copy(app, &settings)?,
+        "copy_size" | "copy_spacing" => advanced::measure(app, &mut settings, operation, axis)?,
+        "filter_text" | "exclude_text" => advanced::filter(app, operation)?,
+        "pseudocolor_apply" => layers::batch(app, &settings.pseudocolor)?,
+        "channels_merge" => layers::merge(app)?,
+        "zoom_apply" => {
+            zoom::apply(app, &settings.zoom)?;
+            settings.zoom = zoom::load(app)?;
+        }
+        "zoom_load" => settings.zoom = zoom::load(app)?,
+        "zoom_pick" => zoom::pick(app, &mut settings.zoom)?,
+        "zoom_sync" => zoom::sync(app, false)?,
+        "scale_apply" => scale::apply(app, &settings.scale, false)?,
+        "scale_calibrate" => scale::apply(app, &settings.scale, true)?,
+        "scale_load" => settings.scale = scale::load(app)?,
+        "scale_read_metadata" => settings.scale = scale::read_metadata(app)?,
         "labels" => labels(app, &settings)?,
+        "renumber_labels" => advanced::renumber(app, &settings)?,
         "borders" => extended::borders(app, &settings)?,
         "preset_save" | "preset_load" | "preset_delete" => {
             let name = settings.preset_name.trim().to_string();
@@ -305,6 +413,14 @@ pub fn command(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String
                 }
             }
         }
+        "set_color" => {
+            colors::set_parameter(
+                app,
+                params.get("target").and_then(Value::as_str).unwrap_or(""),
+                params.get("color").and_then(Value::as_str).unwrap_or(""),
+            )?;
+            settings = app.ui.scientific.clone();
+        }
         "configure" | "inspect" => (),
         _ => return Err("未知科研组图操作".into()),
     }
@@ -312,12 +428,22 @@ pub fn command(app: &mut VectorcraftApp, params: &Value) -> Result<Value, String
         app.ui.scientific = settings;
     }
     Ok(
-        json!({"operation":operation,"settings":app.ui.scientific,"selected":app.session.active().map_or(0,|d|d.selection.len()),"clipboard":app.ui.scientific_clipboard.is_some(),"presets":app.ui.scientific_presets.keys().collect::<Vec<_>>()}),
+        json!({"operation":operation,"settings":app.ui.scientific,"recent_colors":app.ui.scientific_recent_colors,"selected":app.session.active().map_or(0,|d|d.selection.len()),"clipboard":app.ui.scientific_clipboard.is_some(),"presets":app.ui.scientific_presets.keys().collect::<Vec<_>>()}),
     )
 }
 
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     extended::show(app, ui);
+}
+
+pub(crate) fn finish_live_offsets(app: &mut VectorcraftApp, ctx: &egui::Context) {
+    let mut s = app.ui.scientific.clone();
+    advanced::finish_offsets(app, ctx, &mut s);
+    app.ui.scientific = s;
+}
+
+pub(crate) fn autosave_scale(app: &mut VectorcraftApp, ctx: &egui::Context) {
+    scale::autosave_tick(app, ctx);
 }
 
 #[cfg(test)]
