@@ -1,0 +1,13 @@
+.venv/
+.venv-build/
+__pycache__/
+*.py[cod]
+.runtime/
+.dashboard/
+build/
+dist/
+*.spec
+*.log
+.DS_Store
+.env
+*token*

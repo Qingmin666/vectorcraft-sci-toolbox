@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="session-token" content="__SESSION_TOKEN__">
+<title>VectorCraft 科研组图工具箱</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top"><div class="identity"><span class="mark" aria-hidden="true">a<span>b</span></span><div><strong>科研组图工具箱</strong><small>VectorCraft Sci Toolbox <span id="version">0.1.0</span></small></div></div><div class="connection"><span id="lamp"></span><span id="connection-label">正在读取连接</span><button id="show-connection" class="quiet">连接设置</button></div></header>
+<div class="workspace">
+<aside><div class="side-label">画稿工具</div><nav aria-label="功能导航">
+<button class="nav active" data-panel="layout"><span>▦</span>网格与尺寸</button>
+<button class="nav" data-panel="align"><span>☷</span>对齐与间距</button>
+<button class="nav" data-panel="labels"><span>Aa</span>子图标签</button>
+<button class="nav" data-panel="position"><span>↔</span>位置管理</button>
+<button class="nav" data-panel="borders"><span>□</span>图片边框</button>
+</nav><div class="side-bottom"><p>在专用窗口选择对象，<br>回到这里完成排版。</p><span>文字、图片和组合保持可编辑</span></div></aside>
+<main>
+<section id="connection-panel" class="connection-panel" hidden>
+<div class="section-title"><h2>连接 VectorCraft</h2><button id="hide-connection" class="quiet">收起</button></div>
+<p class="hint">启动专用窗口使用独立设置，不会重启或关闭你原有的窗口。文件操作限定在工作目录内。</p>
+<div class="connection-fields"><label>VectorCraft 主程序<input id="executable" placeholder="选择 vectorcraft.exe 的完整路径"></label><label>工作目录<input id="root" placeholder="已有的图片或画稿目录"></label><label>控制端口<input id="control-port" type="number" min="1" max="65535" value="7979"></label></div>
+<div class="button-row"><button id="launch" class="primary">启动专用窗口</button><button id="connect">连接现有窗口</button><button id="save-settings" class="quiet">保存路径</button></div>
+<p class="hint">现有窗口需要以 <code>--control 7979</code> 启动。控制接口仅监听本机，使用后请关闭专用窗口。</p>
+</section>
+<div class="document-bar"><div><span class="eyebrow">当前画稿</span><h1 id="document-title">尚未连接</h1></div><div class="button-row"><button id="refresh">刷新选择</button><button data-op="undo" title="撤销画稿最近一次编辑">撤销</button><button data-op="redo">重做</button></div></div>
+<div class="content-grid">
+<div class="tools">
+<section data-section="layout" class="tool-section">
+<div class="section-title"><h2>让每张图各就其位</h2><span class="unit">单位：pt</span></div>
+<p class="hint">按列最大宽度、行最大高度排布，从所选对象的左上角开始。</p>
+<form id="grid-form"><div class="fields three"><label>列数<input name="columns" type="number" min="1" max="100" value="3" required></label><label>列间距<input name="gap_x" type="number" min="0" step="0.5" value="12" required></label><label>行间距<input name="gap_y" type="number" min="0" step="0.5" value="12" required></label></div>
+<label>对象排序<select name="order"><option value="rows">按画面行顺序</option><option value="selection">按接口返回的选择顺序</option><option value="horizontal">从左到右</option><option value="vertical">从上到下</option></select></label>
+<div class="divider"></div><h3>同时统一尺寸 <span class="optional">可选</span></h3><div class="fields"><label>宽度<input name="width" type="number" min="0.01" step="0.5" placeholder="保持原宽"></label><label>高度<input name="height" type="number" min="0.01" step="0.5" placeholder="保持原高"></label></div><label class="check"><input type="checkbox" name="keep_ratio" checked>保持宽高比（只填写宽或高一项）</label>
+<div class="button-row"><button type="submit" class="primary">应用网格排图</button><button type="button" id="resize-only">仅统一尺寸</button></div></form>
+<p class="note">1 mm ≈ 2.835 pt · 1 cm ≈ 28.346 pt。旋转和裁剪对象按画面上的轴向边界计算。</p>
+</section>
+<section data-section="align" class="tool-section" hidden><div class="section-title"><h2>对齐与间距</h2><span class="unit">单位：pt</span></div><label>对齐基准<select id="align-anchor"><option value="selection">所选对象的整体边界</option><option value="first">选择列表中的第一个对象</option></select></label><div class="align-buttons"><button data-align="left">左对齐</button><button data-align="center">水平居中</button><button data-align="right">右对齐</button><button data-align="top">顶端对齐</button><button data-align="middle">垂直居中</button><button data-align="bottom">底端对齐</button></div><div class="divider"></div><h3>等间距分布</h3><label>对象之间的净间距<input id="spacing" type="number" min="0" value="12" step="0.5"></label><div class="button-row"><button data-spacing="horizontal" class="primary">水平等间距</button><button data-spacing="vertical">垂直等间距</button></div><p class="note">最左侧或最上方的对象保持原位，其他对象依次排布。</p></section>
+<section data-section="labels" class="tool-section" hidden><div class="section-title"><h2>子图标签</h2><span class="editable-tag">可编辑文字</span></div><p class="hint">选择原图或组合，再添加标签。同一原图已有的工具箱标签会更新，不会重复创建。</p><form id="labels-form"><div class="fields"><label>编号格式<select name="style"><option>A</option><option>a</option><option>A)</option><option>a)</option><option>1</option><option>1)</option></select></label><label>起始编号<input name="start" type="number" min="1" max="9999" value="1" required></label><label>字体<input name="font" value="Arial" required></label><label>字号（pt）<input name="size" type="number" min="1" max="300" value="14" required></label><label>锚点<select name="anchor"><option value="top-left">左上</option><option value="top-right">右上</option><option value="bottom-left">左下</option><option value="bottom-right">右下</option></select></label><label>文字颜色<input name="color" type="color" value="#000000"></label><label>横向偏移（右为正）<input name="dx" type="number" step="0.5" value="4" required></label><label>纵向偏移（下为正）<input name="dy" type="number" step="0.5" value="4" required></label></div><label>编号顺序<select name="order"><option value="rows">按画面行顺序</option><option value="selection">按接口返回的选择顺序</option><option value="horizontal">从左到右</option><option value="vertical">从上到下</option></select></label><button class="primary" type="submit">添加 / 更新标签</button></form><p class="note">标签随画稿保存。手动移动原图后，请重新运行以同步位置；首版不自动跟随。</p></section>
+<section data-section="position" class="tool-section" hidden><h2>位置管理</h2><p class="hint">复制位置只记录坐标，不复制或替换图像内容。</p><label>复制方式<select id="position-mode"><option value="absolute">绝对位置</option><option value="relative">相对位置（第一个对象作参考）</option></select></label><label>对象对应顺序<select id="position-order"><option value="selection">按接口返回的选择顺序</option><option value="rows">按画面行顺序</option><option value="horizontal">从左到右</option><option value="vertical">从上到下</option></select></label><div class="button-row"><button id="copy-position">复制位置</button><button id="paste-position" class="primary">粘贴位置</button></div><p id="clipboard-state" class="note">尚未记录位置</p><div class="divider"></div><h3>交换两个对象</h3><p class="hint">交换左上角位置，分别保留原有尺寸。</p><button data-op="swap">交换位置</button><p class="note">相对位置模式：复制和粘贴时对象数量相同，排序后的第一个对象都是参考图。目标参考图保持原位。可在文档之间粘贴位置。</p></section>
+<section data-section="borders" class="tool-section" hidden><h2>图片边框</h2><p class="hint">在每个对象的轴向边界上增加可编辑矩形描边，原始内容保持不变。</p><form id="borders-form"><div class="fields"><label>线宽（pt）<input name="weight" type="number" min="0.01" max="100" value="1" step="0.25" required></label><label>边框颜色<input name="color" type="color" value="#000000"></label></div><button class="primary" type="submit">添加 / 更新边框</button></form><p class="note">同一对象已有的工具箱边框会更新。手动改动原图后，可再次运行同步边框。</p></section>
+<section class="presets"><div class="section-title"><h3>常用预设</h3><button id="save-preset" class="quiet">保存当前参数</button></div><div class="button-row"><select id="preset-list" aria-label="选择已保存预设"><option value="">选择预设</option></select><button id="load-preset">载入</button><button id="delete-preset" class="quiet">删除</button></div></section>
+</div>
+<div class="inspector"><section class="selection"><div class="section-title"><h2>所选对象 <span id="selection-count">0</span></h2><span id="revision" class="muted"></span></div><div id="selection-list"><p class="empty">连接后，在 VectorCraft 中选择图片或对象。</p></div></section><section class="preview-section"><div class="section-title"><h2>画稿预览</h2><button id="preview-button" class="quiet">更新预览</button></div><div class="preview"><img id="preview-image" alt="当前 VectorCraft 画板的实际渲染" hidden><p id="preview-empty" class="empty">点击更新，查看当前画板。<br>预览来自 VectorCraft 实际渲染。</p></div></section><p class="inspector-note">工具箱每次编辑均使用独立撤销分组。操作期间请暂停在 VectorCraft 中手动编辑。</p></div>
+</div>
+<section id="uncertain-panel" class="warning" hidden><strong>编辑结果尚不确定</strong><p>先在 VectorCraft 检查画稿与撤销记录。不要重复点击刚才的操作。</p><button id="acknowledge">已检查画稿，恢复编辑</button></section>
+<div id="message" class="message" role="status" aria-live="polite">就绪。先连接专用窗口。</div>
+</main></div>
+<footer><span>本机处理 · 无需 API Key</span><span>独立开发的配套工具，与 VectorCraft 官方无隶属关系</span><button id="shutdown" class="quiet">关闭工具箱</button></footer>
+<dialog id="preset-dialog"><form method="dialog"><h2>保存常用参数</h2><label>预设名称<input id="preset-name" maxlength="40" required></label><p class="hint">同名预设将被更新。</p><div class="button-row"><button value="cancel" formnovalidate>取消</button><button id="confirm-preset" value="save" class="primary">保存</button></div></form></dialog>
+</body></html>

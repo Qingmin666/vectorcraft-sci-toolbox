@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0",
+  "checks": [
+    "final portable executable starts",
+    "launches dedicated VectorCraft desktop",
+    "opens synthetic native example",
+    "reads four selected images",
+    "no-op does not create undo history",
+    "persists presets",
+    "actual rendered PNG preview"
+  ],
+  "result": "PASS"
+}

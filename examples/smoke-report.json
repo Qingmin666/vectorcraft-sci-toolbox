@@ -1,0 +1,43 @@
+{
+  "version": "0.1.0",
+  "tested_at_utc": "2026-10-15T03:46:10.688472+00:00",
+  "vectorcraft": "0.10.0",
+  "backend": "desktop control",
+  "checks_passed": [
+    "actual desktop control",
+    "image grid layout",
+    "one operation one undo group",
+    "undo restores exact bounds",
+    "redo restores grid",
+    "individual proportional image resize",
+    "align top",
+    "net horizontal gaps",
+    "swap preserves sizes",
+    "absolute position paste",
+    "relative reference stays fixed",
+    "relative offsets restored",
+    "editable labels created",
+    "label updates do not duplicate",
+    "label text updated",
+    "border update does not duplicate",
+    "borders unfilled",
+    "native document saved",
+    "real PNG exported",
+    "native reopen retains editable images and text",
+    "label association survives save reopen",
+    "rotated group and clipped image layout",
+    "group clip undo restores bounds",
+    "invalid dimensions make no edits",
+    "stale selection rejected",
+    "locked or empty selection rejected",
+    "explicit refusal rolls back partial operation"
+  ],
+  "count": 27,
+  "example_sha256": "7533bd0259a5bc6ef3163e901d3f4f1beff66dba7d8ec69bc04267a0173412e6",
+  "limitations": [
+    "No OS-level manual pointer test",
+    "No docked in-app panel",
+    "No automatic label following",
+    "Only this Windows host and VectorCraft 0.10.0 were tested"
+  ]
+}
