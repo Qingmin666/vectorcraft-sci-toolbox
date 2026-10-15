@@ -50,8 +50,7 @@ class Companion:
 
     @staticmethod
     def find_executable():
-        candidates=[Path("D:/StudyApp/VectorCraft/vectorcraft.exe"),
-                    Path(os.environ.get("PROGRAMFILES","C:/Program Files"))/"VectorCraft/vectorcraft.exe"]
+        candidates=[Path(os.environ.get("PROGRAMFILES","C:/Program Files"))/"VectorCraft/vectorcraft.exe"]
         return next((str(p) for p in candidates if p.is_file()),"")
 
     def save_settings(self,options):
