@@ -1,6 +1,6 @@
 VectorCraft 科研定制版 0.2.0-rc.2
 
-基于官方 VectorCraft 0.10.0 单独编译的第二版候选。尚未发布为正式 GitHub Release。
+基于官方 VectorCraft 0.10.0 单独编译的第二版候选。已发布为 GitHub 预发布版本。
 双击 VectorCraftSCI.exe，在右侧“属性 / 图层 / 库”旁打开“科研组图”，也可从“窗口”菜单打开。
 每个分区可折叠；向下滚动查看其余功能。正常使用不需要 API Key、Python 服务或首版工具箱。
 
