@@ -1,6 +1,11 @@
-# VectorCraft 科研组图工具箱
+# VectorCraft SCI Web — 浏览器面板版
 
-第二版原生内嵌候选 **0.2.0-rc.2** 已通过本机完整工程检查及桌面联测，加入原生配色、比例尺、多ROI、伪彩与Screen通道合并，详情见 [定制版说明](native/README.md) 和 [验证记录](docs/native/VALIDATION-RC2.md)。GitHub 预发布版 v0.2.0-rc.2 已发布；第一版发行保留。
+本仓库独立维护浏览器面板版：通过本机服务连接已安装的 VectorCraft 桌面窗口。
+
+[项目首页](https://qingmin666.github.io/vectorcraft-sci-toolbox/) · [下载本机浏览器面板](https://github.com/Qingmin666/vectorcraft-sci-toolbox/releases/latest)
+
+需要嵌入右侧停靠面板、原生取色、比例尺、ROI、伪彩和通道合并时，请使用独立项目 [VectorCraft SCI Native](https://github.com/Qingmin666/vectorcraft-sci-native)，当前推荐原生版本为 [RC2](https://github.com/Qingmin666/vectorcraft-sci-native/releases/latest)。
+
 
 面向科研组图的中文桌面配套工具。选择 VectorCraft 中的图片、文字或组合，用独立面板完成网格排图、尺寸调整、子图标签、间距和位置管理。保留原始对象的可编辑性，无需 AI API 或云服务。
 
@@ -8,7 +13,7 @@
 
 ![中文工具面板与真实画稿预览](docs/panel-desktop.png)
 
-## 首版功能
+## 浏览器面板功能
 
 - 网格排图：列数、行列间距，按行/水平/垂直/接口返回的选择顺序排序。
 - 统一尺寸：逐对象设置宽高，支持保持比例。

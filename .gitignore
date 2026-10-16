@@ -11,3 +11,6 @@ dist/
 .DS_Store
 .env
 *token*
+
+# Independently versioned native desktop project
+/native/
